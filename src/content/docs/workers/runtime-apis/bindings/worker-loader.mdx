@@ -234,16 +234,16 @@ export default {
 
 ### Passing resources to Dynamic Workers
 
-When passing bindings or resources to a Dynamic Worker, choose the method based on what you're passing:
+Dynamic Workers don't have their own persistent storage—they run user-provided code that exists only for the duration of execution. If your Dynamic Worker needs to store data between runs, you'll need to pass it access to storage from elsewhere.
+
+Choose your approach based on what you're passing:
 
 - **[`env`](#env):** Use for global resources like [KV namespaces](/kv/), [R2 buckets](/r2/), or [D1 databases](/d1/). These are independent of the caller and remain valid for the entire lifespan of the Worker.
 - **Function parameters:** Use when you need to give a Dynamic Worker access to a Durable Object's storage or other instance-specific state. Passing these as function parameters keeps the Durable Object alive and connected for the duration of the call.
 
 #### Passing Durable Object storage to Dynamic Workers
 
-Dynamic Workers do not have their own persistent storage — they run user-provided code that exists only for the duration of execution. If that code needs to store data between runs, you can give it access to Durable Object storage by passing a storage interface via RPC.
-
-You can do this by wrapping [Durable Object storage](/durable-objects/api/sqlite-storage-api/) in an [`RpcTarget`](/workers/runtime-apis/rpc/) and passing it to the Dynamic Worker. This allows the Dynamic Worker to call methods like `storage.put()` and `storage.get()` without direct access to your Durable Object. You can implement the storage interface using the [KV API](/durable-objects/api/sqlite-storage-api/#synchronous-kv-api), or use [SQLite](/durable-objects/api/sqlite-storage-api/#sql-api) for more complex queries (as the example below shows).
+To give a Dynamic Worker access to Durable Object storage, wrap it in an [`RpcTarget`](/workers/runtime-apis/rpc/) and pass it as a function parameter. This allows the Dynamic Worker to call methods like `storage.put()` and `storage.get()` without direct access to your Durable Object. You can implement the storage interface using the [KV API](/durable-objects/api/sqlite-storage-api/#synchronous-kv-api), or use [SQLite](/durable-objects/api/sqlite-storage-api/#sql-api) for more complex queries (as the example below shows).
 
 ```ts
 import { DurableObject, RpcTarget, WorkerEntrypoint } from "cloudflare:workers";
