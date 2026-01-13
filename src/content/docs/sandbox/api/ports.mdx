@@ -29,6 +29,7 @@ const response = await sandbox.exposePort(port: number, options: ExposePortOptio
 - `options`:
   - `hostname` - Your Worker's domain name (e.g., `'example.com'`). Required to construct preview URLs with wildcard subdomains like `https://8080-sandbox-abc123.example.com`. Cannot be a `.workers.dev` domain as it doesn't support wildcard DNS patterns.
   - `name` - Friendly name for the port (optional)
+  - `token` - Custom token for preview URL (optional, 1-16 characters: a-z, 0-9, _)
 
 **Returns**: `Promise<ExposePortResponse>` with `port`, `url` (preview URL), `name`
 
@@ -49,12 +50,46 @@ const api = await sandbox.exposePort(3000, { hostname, name: 'api' });
 
 await sandbox.startProcess('npm run dev');
 const frontend = await sandbox.exposePort(5173, { hostname, name: 'frontend' });
+
+// With custom token - URL stays consistent across restarts
+const stable = await sandbox.exposePort(8080, { 
+  hostname, 
+  token: 'my_token_v1' // 1-16 chars: a-z, 0-9, _
+});
+console.log(stable.exposedAt);
+// https://8080-sandbox-id-my_token_v1.yourdomain.com
 ```
 </TypeScriptExample>
 
 :::note[Local development]
 When using `wrangler dev`, you must add `EXPOSE` directives to your Dockerfile for each port. See [Expose Services guide](/sandbox/guides/expose-services/#local-development) for details.
 :::
+
+## Custom Tokens
+
+By default, preview URLs use randomly generated tokens that change each time you expose a port. For consistent URLs across sandbox restarts, use custom tokens:
+
+<TypeScriptExample>
+```ts
+// With custom token - URL stays the same across restarts
+const { url } = await sandbox.exposePort(8080, {
+  hostname: 'example.com',
+  token: 'my_token_v1' // 1-16 chars: a-z, 0-9, _
+});
+// url: https://8080-sandbox-id-my_token_v1.example.com
+
+// Without token - URL changes each time
+const { url: randomUrl } = await sandbox.exposePort(8080, {
+  hostname: 'example.com'
+});
+// url: https://8080-sandbox-id-abc123random4567.example.com
+```
+</TypeScriptExample>
+
+**Token requirements:**
+- 1-16 characters containing only lowercase letters, numbers, and underscores
+- Must be unique per port within the same sandbox
+- Cannot contain hyphens or special characters
 
 ### `unexposePort()`
 

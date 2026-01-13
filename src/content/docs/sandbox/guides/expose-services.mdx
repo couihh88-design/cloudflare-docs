@@ -189,6 +189,40 @@ return Response.json({
 ```
 </TypeScriptExample>
 
+## Custom tokens for stable URLs
+
+By default, preview URLs change each time you expose a port because a new random token is generated. For consistent URLs across sandbox restarts, use custom tokens:
+
+<TypeScriptExample>
+```
+// Extract hostname from request
+const { hostname } = new URL(request.url);
+
+// With custom token - URL stays consistent
+const api = await sandbox.exposePort(8080, {
+  hostname,
+  name: 'api',
+  token: 'stable_api_v1'
+});
+console.log('API URL:', api.exposedAt);
+// https://8080-sandbox-id-stable_api_v1.yourdomain.com
+
+// Without custom token - URL changes each restart
+const dev = await sandbox.exposePort(3000, { hostname, name: 'dev' });
+// https://3000-sandbox-id-random_token.yourdomain.com
+```
+</TypeScriptExample>
+
+**Token requirements:**
+- 1-16 characters containing only lowercase letters (a-z), numbers (0-9), and underscores (_)
+- Must be unique per port within the same sandbox
+- Cannot contain hyphens or special characters
+
+**Use cases for custom tokens:**
+- **Stable demo URLs** - Share consistent links with stakeholders
+- **Webhook endpoints** - Configure third-party services with permanent URLs
+- **Development environments** - Maintain consistent URLs across restarts
+
 ## Manage exposed ports
 
 ### List currently exposed ports
@@ -226,6 +260,7 @@ for (const port of [3000, 5173, 8080]) {
 
 - **Wait for readiness** - Don't expose ports immediately after starting processes
 - **Use named ports** - Easier to track when exposing multiple ports
+- **Use custom tokens** - For consistent URLs across restarts when needed
 - **Clean up** - Unexpose ports when done to prevent abandoned URLs
 - **Add authentication** - Preview URLs are public; protect sensitive services
 
