@@ -231,3 +231,89 @@ export default {
   }
 }
 ```
+
+### Passing Durable Object storage to Dynamic Workers
+
+Dynamic Workers do not have their own persistent storage — they run user-provided code that exists only for the duration of execution. If that code needs to store data between runs, you can give it access to Durable Object storage by passing a storage interface via RPC.
+
+You can do this by wrapping [Durable Object storage](/durable-objects/api/sqlite-storage-api/) in an [`RpcTarget`](/workers/runtime-apis/rpc/) and passing it to the Dynamic Worker. This allows the Dynamic Worker to call methods like `storage.put()` and `storage.get()` without direct access to your Durable Object. You can implement the storage interface using the [KV API](/durable-objects/api/sqlite-storage-api/#synchronous-kv-api), or use [SQLite](/durable-objects/api/sqlite-storage-api/#sql-api) for more complex queries (as the example below shows).
+
+#### When to use `env` vs function parameters
+
+When passing bindings or resources to a Dynamic Worker, choose the method based on the resource's lifecycle:
+
+- **[`env`](#env):** Use for global resources like KV namespaces, R2 buckets, or D1 databases. These are independent of the caller and remain valid for the entire lifespan of the Worker.
+- **Function parameters:** Use for resources that belong to the Durable Object instance making the call, such as a storage wrapper referencing `this.ctx.storage`. This ensures the Durable Object stays alive and connected to provide access to its data for the duration of the call.
+
+```ts
+import { DurableObject, RpcTarget, WorkerEntrypoint } from 'cloudflare:workers';
+
+// Wrap Durable Object storage in an RpcTarget so it can be passed to Dynamic Workers.
+class StorageContext extends RpcTarget {
+  constructor(private storage: DurableObjectStorage) {
+    super();
+    this.storage = storage;
+  }
+
+  async put(key: string, data: any) {
+    this.storage.sql.exec(
+      'INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)',
+      key,
+      JSON.stringify(data)
+    );
+  }
+
+  async get(key: string) {
+    const cursor = this.storage.sql.exec(
+      'SELECT value FROM kv WHERE key = ?',
+      key
+    );
+    const row = cursor.one();
+    return row ? JSON.parse(row.value as string) : null;
+  }
+}
+
+export class MyDurableObject extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // Create the key-value table if it doesn't exist
+    this.ctx.storage.sql.exec(
+      'CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)'
+    );
+  }
+
+  async call(request: Request) {
+    // Load Dynamic Worker that needs storage access
+    let worker = this.env.LOADER.get('my-dynamic-worker', () => {
+      return {
+        compatibilityDate: '2025-06-01',
+        mainModule: 'worker.js',
+        modules: {
+          'worker.js': `
+            import { WorkerEntrypoint } from 'cloudflare:workers';
+
+            export default class extends WorkerEntrypoint {
+              async call(request, storage) {
+                await storage.put('key', 123);
+                const value = await storage.get('key');
+                return new Response(value);
+              }
+            }
+          `,
+        },
+      };
+    });
+
+    // Pass the StorageContext to the Dynamic Worker
+    return await worker.getEntrypoint().call(request, new StorageContext(this.ctx.storage));
+  }
+}
+
+export default class extends WorkerEntrypoint<Env> {
+  async fetch(request: Request): Promise<Response> {
+    const id = this.env.MY_DURABLE_OBJECT.idFromName('example');
+    const stub = this.env.MY_DURABLE_OBJECT.get(id);
+    return stub.call(request);
+  }
+}
+```
